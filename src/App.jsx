@@ -1,71 +1,80 @@
+import { useEffect, useMemo, useState } from 'react'
+import Header from './components/Header'
+import RestaurantList from './components/RestaurantList'
+import MenuView from './components/MenuView'
+import CartDrawer from './components/CartDrawer'
+
 function App() {
+  const [view, setView] = useState('home')
+  const [selectedRestaurant, setSelectedRestaurant] = useState(null)
+  const [cartOpen, setCartOpen] = useState(false)
+  const [cart, setCart] = useState([])
+  const [placing, setPlacing] = useState(false)
+  const base = useMemo(() => import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000', [])
+
+  useEffect(() => {
+    // seed demo data once
+    const seed = async () => {
+      try { await fetch(`${base}/seed`, { method: 'POST' }) } catch {}
+    }
+    seed()
+  }, [base])
+
+  const addToCart = (item) => {
+    setCart((prev) => {
+      const existing = prev.find((p) => p.id === item.id)
+      if (existing) {
+        return prev.map((p) => p.id === item.id ? { ...p, quantity: p.quantity + 1 } : p)
+      }
+      return [...prev, { id: item.id, name: item.name, price: item.price, quantity: 1 }]
+    })
+  }
+
+  const placeOrder = async () => {
+    if (!selectedRestaurant || cart.length === 0) return
+    setPlacing(true)
+    try {
+      const payload = {
+        restaurant_id: selectedRestaurant.id,
+        items: cart.map((c) => ({ menuitem_id: c.id, quantity: c.quantity })),
+        customer_name: 'Demo User',
+        address: '123 Demo Street',
+        phone: '555-0100',
+      }
+      const res = await fetch(`${base}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      const data = await res.json()
+      if (res.ok) {
+        alert(`Order placed! Total $${data.total}`)
+        setCart([])
+        setCartOpen(false)
+      } else {
+        alert(data.detail || 'Failed to place order')
+      }
+    } catch (e) {
+      alert('Network error placing order')
+    } finally {
+      setPlacing(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Subtle pattern overlay */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.05),transparent_50%)]"></div>
+      <Header cartCount={cart.reduce((s,c)=>s+c.quantity,0)} onViewCart={()=>setCartOpen(true)} onBack={()=>setView('home')} canGoBack={view!== 'home'} />
 
-      <div className="relative min-h-screen flex items-center justify-center p-8">
-        <div className="max-w-2xl w-full">
-          {/* Header with Flames icon */}
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center mb-6">
-              <img
-                src="/flame-icon.svg"
-                alt="Flames"
-                className="w-24 h-24 drop-shadow-[0_0_25px_rgba(59,130,246,0.5)]"
-              />
-            </div>
-
-            <h1 className="text-5xl font-bold text-white mb-4 tracking-tight">
-              Flames Blue
-            </h1>
-
-            <p className="text-xl text-blue-200 mb-6">
-              Build applications through conversation
-            </p>
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        {view === 'home' && (
+          <div>
+            <h2 className="text-white text-2xl font-bold mb-6">Popular Restaurants</h2>
+            <RestaurantList onOpen={(r)=>{ setSelectedRestaurant(r); setView('menu') }} />
           </div>
+        )}
 
-          {/* Instructions */}
-          <div className="bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-2xl p-8 shadow-xl mb-6">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                1
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Describe your idea</h3>
-                <p className="text-blue-200/80 text-sm">Use the chat panel on the left to tell the AI what you want to build</p>
-              </div>
-            </div>
+        {view === 'menu' && selectedRestaurant && (
+          <MenuView restaurant={selectedRestaurant} onBack={()=>setView('home')} onAdd={addToCart} />
+        )}
+      </main>
 
-            <div className="flex items-start gap-4 mb-6">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                2
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Watch it build</h3>
-                <p className="text-blue-200/80 text-sm">Your app will appear in this preview as the AI generates the code</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                3
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Refine and iterate</h3>
-                <p className="text-blue-200/80 text-sm">Continue the conversation to add features and make changes</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="text-center">
-            <p className="text-sm text-blue-300/60">
-              No coding required • Just describe what you want
-            </p>
-          </div>
-        </div>
-      </div>
+      <CartDrawer open={cartOpen} items={cart} onClose={()=>setCartOpen(false)} onPlaceOrder={placeOrder} updating={placing} />
     </div>
   )
 }
